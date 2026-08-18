@@ -40,7 +40,7 @@
         <el-option v-for="c in customerOptions" :key="c" :label="c === '__none__' ? '未分配' : c" :value="c" />
       </el-select>
 
-      <el-upload :show-file-list="false" :http-request="doImport" accept=".xlsx,.xls">
+      <el-upload v-if="!isBatches" :show-file-list="false" :http-request="doImport" accept=".xlsx,.xls">
         <el-button :icon="Upload" class="ghost-btn">导入 Excel</el-button>
       </el-upload>
       <el-dropdown trigger="click" @command="exportFile">
@@ -97,8 +97,9 @@
             <span v-else>{{ row[col[0]] }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right" align="center">
+        <el-table-column label="操作" :width="isBatches ? 200 : 150" fixed="right" align="center">
           <template #default="{ row }">
+            <el-button v-if="isBatches" link type="success" size="small" @click="openBatchImport(row)">导入</el-button>
             <el-button link type="primary" size="small" @click="openDialog(row)">编辑</el-button>
             <el-button link type="danger" size="small" @click="deleteOne(row)">删除</el-button>
           </template>
@@ -178,6 +179,27 @@
         <el-button type="primary" :loading="saving" :icon="Check" @click="save">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 批次批量导入弹窗 -->
+    <el-dialog v-model="importDialogVisible" title="批量导入设备" width="520px" align-center>
+      <el-form label-width="110px">
+        <el-form-item label="批次 PN">
+          <el-tag type="info" class="pn-tag">{{ importBatch?.pn }}</el-tag>
+        </el-form-item>
+        <el-form-item label="目标台账">
+          <el-radio-group v-model="importTarget">
+            <el-radio value="devices">设备台账</el-radio>
+            <el-radio value="edge_boxes">边缘盒子台账</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="Excel 文件">
+          <el-upload :show-file-list="false" :http-request="doBatchImport" accept=".xlsx,.xls">
+            <el-button :icon="Upload" type="primary" :loading="batchImporting">选择文件并导入</el-button>
+          </el-upload>
+          <div class="import-tip">文件表头需与所选目标台账一致（如 入库时间/设备SN/客户 等），导入后自动带上该批次 PN</div>
+        </el-form-item>
+      </el-form>
+    </el-dialog>
   </div>
 </template>
 
@@ -218,6 +240,12 @@ const dateFields = ref([])
 const colorBy = ref({})
 const pools = ref({})
 
+const isBatches = computed(() => props.resource === 'batches')
+const importDialogVisible = ref(false)
+const importBatch = ref(null)
+const importTarget = ref('devices')
+const batchImporting = ref(false)
+
 const STATUS_COLORS = {
   激活: 'ok', 启用: 'ok', 正常: 'ok', 运行中: 'ok', 使用中: 'ok',
   未激活: 'info', 未启用: 'info', 待激活: 'info', 空闲中: 'idle',
@@ -243,6 +271,7 @@ const STAT_CFG = {
   },
   customers: { primary: 'name', metric: { label: '被设备引用', icon: Location, fn: (r) => r.length }, forcePending: true },
   assets: { primary: 'asset_model', metric: { label: '型号总数', icon: Files, fn: (r) => r.length }, forcePending: true },
+  batches: { primary: 'pn', metric: { label: '设备总数', icon: Files, fn: (r) => r.reduce((s, x) => s + (Number(x.count) || 0), 0) }, forcePending: true },
 }
 
 const tableColumns = computed(() => columns.value.filter((c) => !hiddenInTable.value.includes(c[0])))
@@ -316,7 +345,7 @@ function isStatusCol(col) {
   return col[1].includes('状态')
 }
 function isSnCol(col) {
-  return ['设备SN', 'SN', 'iccid', 'SSID', 'ICCID1', 'ICCID2'].includes(col[1])
+  return ['设备SN', 'SN', 'iccid', 'SSID', 'ICCID1', 'ICCID2', 'PN'].includes(col[1])
 }
 function statusType(v) {
   return STATUS_COLORS[v] || 'info'
@@ -343,7 +372,7 @@ function selPlaceholder(field) {
   return '请选择'
 }
 function fromTitle(res) {
-  return { iot_cards: '物联网卡台账', customers: '客户管理', assets: '资产管理' }[res] || res
+  return { iot_cards: '物联网卡台账', customers: '客户管理', assets: '型号管理', batches: '批次管理' }[res] || res
 }
 function poolOptions(field) {
   return pools.value[field] || []
@@ -423,6 +452,7 @@ async function loadPools() {
           }
           if (res === 'iot_cards') opt.extra = `[${row.card_status || '未登记'}]`
           if (res === 'assets') opt.extra = `[${row.asset_type || ''}]`
+          if (res === 'batches') opt.extra = `[${row.device_model || ''}]`
           if (res === 'iot_cards') opt.status = row.card_status
           return opt
         })
@@ -438,7 +468,10 @@ function onSelectChange(field, v) {
   if (!cfg || Array.isArray(cfg)) return
   if (cfg.linked) {
     const opt = (pools.value[field] || []).find((o) => o.value === v)
-    form[cfg.linked.target] = opt ? opt.data[cfg.linked.source] || '' : ''
+    const links = Array.isArray(cfg.linked) ? cfg.linked : [cfg.linked]
+    links.forEach((l) => {
+      form[l.target] = opt ? opt.data[l.source] || '' : ''
+    })
   }
   if (cfg.from === 'iot_cards') {
     const opt = (pools.value[field] || []).find((o) => o.value === v)
@@ -524,6 +557,26 @@ async function doImport({ file }) {
     refresh()
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '导入失败')
+  }
+}
+
+function openBatchImport(row) {
+  importBatch.value = row
+  importTarget.value = 'devices'
+  importDialogVisible.value = true
+}
+
+async function doBatchImport({ file }) {
+  batchImporting.value = true
+  try {
+    const { data } = await api.batchImport(importBatch.value.id, importTarget.value, file)
+    ElMessage.success(`导入成功 ${data.imported} 条，PN=${data.batch_pn}`)
+    importDialogVisible.value = false
+    refresh()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '导入失败')
+  } finally {
+    batchImporting.value = false
   }
 }
 
@@ -800,6 +853,19 @@ onUnmounted(() => clearTimeout(debounceTimer))
   padding: 0 10px;
   border-radius: 6px;
   white-space: nowrap;
+}
+
+.pn-tag {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+
+.import-tip {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 8px;
+  line-height: 1.6;
 }
 
 @media (max-width: 1200px) {

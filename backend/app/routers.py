@@ -9,7 +9,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import RESOURCES
+from .models import RESOURCES, Batch
 
 router = APIRouter(tags=["通用"])
 
@@ -36,6 +36,7 @@ def get_meta():
             "hidden_in_form": cfg.get("hidden_in_form", []),
             "date_fields": cfg.get("date_fields", []),
             "color_by": cfg.get("color_by", {}),
+            "computed_columns": cfg.get("computed_columns", []),
         }
         for name, cfg in RESOURCES.items()
     }
@@ -46,7 +47,10 @@ def _query_items(resource: str, keyword: str, db: Session):
         raise HTTPException(status_code=404, detail="未知资源")
     cfg = RESOURCES[resource]
     model = cfg["model"]
-    q = db.query(model).filter(_search_filter(model, cfg["columns"], keyword))
+    search_cols = [
+        c for c in cfg["columns"] if c[0] not in cfg.get("computed_columns", [])
+    ]
+    q = db.query(model).filter(_search_filter(model, search_cols, keyword))
     return cfg, q.order_by(model.id).all()
 
 
@@ -58,10 +62,11 @@ def export_items(
     db: Session = Depends(get_db),
 ):
     cfg, items = _query_items(resource, keyword, db)
-    labels = [label for _, label in cfg["columns"]]
+    cols = [c for c in cfg["columns"] if c[0] not in cfg.get("computed_columns", [])]
+    labels = [label for _, label in cols]
     data = []
     for it in items:
-        data.append({label: (getattr(it, col) or "") for col, label in cfg["columns"]})
+        data.append({label: (getattr(it, col) or "") for col, label in cols})
     df = pd.DataFrame(data, columns=labels)
     fname = f"{cfg['title']}_{pd.Timestamp.now():%Y%m%d_%H%M%S}"
 
@@ -139,3 +144,56 @@ async def import_items(
     db.bulk_insert_mappings(model, rows)
     db.commit()
     return {"ok": True, "imported": len(rows), "replace": replace}
+
+
+@router.post("/batches/{batch_id}/import")
+async def batch_import_items(
+    batch_id: int,
+    file: UploadFile = File(...),
+    target: str = Query(..., description="目标台账: devices 或 edge_boxes"),
+    db: Session = Depends(get_db),
+):
+    if target not in ("devices", "edge_boxes"):
+        raise HTTPException(status_code=400, detail="target 必须为 devices 或 edge_boxes")
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="批次不存在")
+
+    cfg = RESOURCES[target]
+    model = cfg["model"]
+    sheet = cfg["sheet"]
+    raw = await file.read()
+    try:
+        df = pd.read_excel(io.BytesIO(raw), sheet_name=sheet, dtype=object)
+    except Exception:
+        try:
+            df = pd.read_excel(io.BytesIO(raw), sheet_name=0, dtype=object)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"读取Excel失败: {e}")
+    df = df.where(pd.notna(df), None)
+    if df.empty:
+        raise HTTPException(status_code=400, detail="导入文件无数据")
+
+    col_map = {label: col for col, label in cfg["columns"]}
+    rows = []
+    for _, r in df.iterrows():
+        record = {}
+        for label, col in col_map.items():
+            if label in df.columns:
+                v = r.get(label)
+                if v is not None and not (isinstance(v, float) and pd.isna(v)):
+                    record[col] = str(v) if not isinstance(v, str) else v
+        record["pn"] = batch.pn
+        record["device_type"] = batch.device_type
+        record["device_model"] = batch.device_model
+        rows.append(record)
+
+    if rows:
+        db.bulk_insert_mappings(model, rows)
+        db.commit()
+    return {
+        "ok": True,
+        "imported": len(rows),
+        "batch_pn": batch.pn,
+        "target": target,
+    }

@@ -18,17 +18,38 @@
 
       <nav class="nav">
         <div class="nav-label">数据模块</div>
-        <button
-          v-for="m in menus"
-          :key="m.resource"
-          class="nav-item"
-          :class="{ active: active === m.resource }"
-          @click="active = m.resource"
-        >
-          <el-icon class="nav-icon"><component :is="m.icon" /></el-icon>
-          <span>{{ m.title }}</span>
-          <span class="nav-dot" />
-        </button>
+        <template v-for="m in menus" :key="m.title">
+          <button
+            v-if="!m.children"
+            class="nav-item"
+            :class="{ active: active === m.resource }"
+            @click="active = m.resource"
+          >
+            <el-icon class="nav-icon"><component :is="m.icon" /></el-icon>
+            <span>{{ m.title }}</span>
+            <span class="nav-dot" />
+          </button>
+
+          <div v-else class="nav-group" :class="{ open: groupOpen(m) }">
+            <button class="nav-item nav-group-head" @click="toggleGroup(m)">
+              <el-icon class="nav-icon"><component :is="m.icon" /></el-icon>
+              <span>{{ m.title }}</span>
+              <span class="nav-dot" :class="{ active: isGroupActive(m) }" />
+            </button>
+            <div class="nav-sub">
+              <button
+                v-for="c in m.children"
+                :key="c.resource"
+                class="nav-item nav-sub-item"
+                :class="{ active: active === c.resource }"
+                @click="active = c.resource"
+              >
+                <span class="nav-sub-bullet" :class="{ active: active === c.resource }" />
+                <span>{{ c.title }}</span>
+              </button>
+            </div>
+          </div>
+        </template>
       </nav>
 
       <div class="sidebar-footer">
@@ -61,19 +82,42 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { Cpu, CreditCard, Box, User, Suitcase } from '@element-plus/icons-vue'
+import { Cpu, CreditCard, Box, User, Suitcase, Files } from '@element-plus/icons-vue'
 import LedgerView from './LedgerView.vue'
 
 const menus = [
   { resource: 'devices', title: '设备台账', desc: '管理设备、ICCID 卡绑定与部署去向', icon: Cpu },
   { resource: 'iot_cards', title: '物联网卡台账', desc: '管理物联网卡 iccid、运营商与卡状态', icon: CreditCard },
-  { resource: 'edge_boxes', title: '边缘盒子台账', desc: '管理边缘盒子 SN、归属门店与部署位置', icon: Box },
+  { resource: 'edge_boxes', title: '边缘盒子台账', desc: '管理边缘盒子 SN、PN 与部署去向', icon: Box },
   { resource: 'customers', title: '客户管理', desc: '维护客户信息，供设备与边缘盒子引用', icon: User },
-  { resource: 'assets', title: '资产管理', desc: '维护设备类型与型号，供设备引用', icon: Suitcase },
+  {
+    title: '资产管理',
+    icon: Suitcase,
+    children: [
+      { resource: 'assets', title: '型号管理', desc: '维护设备类型与型号，供批次引用', icon: Suitcase },
+      { resource: 'batches', title: '批次管理', desc: '管理设备 PN 批次，支持批量导入', icon: Files },
+    ],
+  },
 ]
 
 const active = ref('devices')
-const current = computed(() => menus.find((m) => m.resource === active.value))
+const openGroups = ref(new Set())
+
+function isGroupActive(m) {
+  return m.children.some((c) => c.resource === active.value)
+}
+function groupOpen(m) {
+  return isGroupActive(m) || openGroups.value.has(m.title)
+}
+function toggleGroup(m) {
+  if (openGroups.value.has(m.title)) openGroups.value.delete(m.title)
+  else openGroups.value.add(m.title)
+}
+
+const current = computed(() => {
+  const flat = menus.flatMap((m) => m.children || [m])
+  return flat.find((m) => m.resource === active.value)
+})
 </script>
 
 <style scoped>
@@ -204,6 +248,46 @@ const current = computed(() => menus.find((m) => m.resource === active.value))
 }
 
 .nav-item.active .nav-dot {
+  background: var(--primary-3);
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.8);
+}
+
+.nav-group {
+  position: relative;
+}
+
+.nav-group-head .nav-dot {
+  transition: transform 0.2s ease;
+}
+
+.nav-sub {
+  display: none;
+  margin: 2px 0 2px 14px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-group.open .nav-sub {
+  display: flex;
+}
+
+.nav-sub-item {
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.nav-sub-bullet {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.nav-sub-bullet.active {
   background: var(--primary-3);
   box-shadow: 0 0 8px rgba(34, 211, 238, 0.8);
 }

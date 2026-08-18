@@ -1,16 +1,44 @@
+import random
+import string
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import RESOURCES, IotCard, Customer, Asset
+from .models import RESOURCES, Asset, Batch, Customer, Device, EdgeBox, IotCard
+
+
+def _gen_pn(db: Session) -> str:
+    while True:
+        pn = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        if not db.query(Batch).filter(Batch.pn == pn).first():
+            return pn
+
 
 # ---------- 设备模块业务钩子 ----------
 # ICCID 必须引用卡台账中的卡，卡状态自动从卡台账读取；
-# 客户必须引用客户管理；设备型号引用资产管理并按型号自动带出设备类型。
+# 客户必须引用客户管理；PN 引用批次管理，按 PN 自动带出设备类型/型号。
 
 
-def _devices_before_save(payload: dict, db: Session):
+def _resolve_pn_fields(payload: dict, db: Session, current_id=None):
+    pn = (payload.get("pn") or "").strip()
+    if pn:
+        batch = db.query(Batch).filter(Batch.pn == pn).first()
+        if not batch:
+            raise HTTPException(
+                status_code=422,
+                detail=f"PN「{pn}」未在批次管理中登记，请先在「批次管理」创建该批次",
+            )
+        payload["device_type"] = batch.device_type
+        payload["device_model"] = batch.device_model
+    else:
+        payload.pop("device_type", None)
+        payload.pop("device_model", None)
+    return payload
+
+
+def _devices_before_save(payload: dict, db: Session, current_id=None):
     for key, status_key in (("iccid1", "card1_status"), ("iccid2", "card2_status")):
         v = (payload.get(key) or "").strip()
         if v:
@@ -33,18 +61,7 @@ def _devices_before_save(payload: dict, db: Session):
             detail=f"客户「{cust}」未在客户管理中登记，请先在「客户管理」添加该客户后再引用",
         )
 
-    model = (payload.get("device_model") or "").strip()
-    if model:
-        asset = db.query(Asset).filter(Asset.asset_model == model).first()
-        if not asset:
-            raise HTTPException(
-                status_code=422,
-                detail=f"设备型号「{model}」未在资产管理中登记，请先在「资产管理」添加该型号后再引用",
-            )
-        payload["device_type"] = asset.asset_type
-    else:
-        payload["device_type"] = None
-    return payload
+    return _resolve_pn_fields(payload, db, current_id)
 
 
 def _devices_enrich(items, db: Session):
@@ -65,19 +82,68 @@ def _devices_enrich(items, db: Session):
         it.card2_status = status.get(it.iccid2)
 
 
-def _edge_boxes_before_save(payload: dict, db: Session):
+def _edge_boxes_before_save(payload: dict, db: Session, current_id=None):
     cust = (payload.get("customer") or "").strip()
     if cust and not db.query(Customer).filter(Customer.name == cust).first():
         raise HTTPException(
             status_code=422,
             detail=f"客户「{cust}」未在客户管理中登记，请先在「客户管理」添加该客户后再引用",
         )
+    return _resolve_pn_fields(payload, db, current_id)
+
+
+def _batches_before_save(payload: dict, db: Session, current_id=None):
+    pn = (payload.get("pn") or "").strip()
+    if not pn:
+        payload["pn"] = _gen_pn(db)
+    else:
+        q = db.query(Batch).filter(Batch.pn == pn)
+        if current_id:
+            q = q.filter(Batch.id != current_id)
+        if q.first():
+            raise HTTPException(
+                status_code=422,
+                detail=f"PN「{pn}」已存在，请重新生成",
+            )
+
+    model_v = (payload.get("device_model") or "").strip()
+    if model_v:
+        asset = db.query(Asset).filter(Asset.asset_model == model_v).first()
+        if not asset:
+            raise HTTPException(
+                status_code=422,
+                detail=f"设备型号「{model_v}」未在型号管理中登记，请先在「型号管理」添加该型号后再引用",
+            )
+        payload["device_type"] = asset.asset_type
+    else:
+        payload["device_type"] = None
     return payload
+
+
+def _batches_enrich(items, db: Session):
+    if not items:
+        return
+    pns = [getattr(it, "pn") for it in items if getattr(it, "pn")]
+    dev_counts = {}
+    eb_counts = {}
+    if pns:
+        for pn, c in (
+            db.query(Device.pn, func.count()).filter(Device.pn.in_(pns)).group_by(Device.pn).all()
+        ):
+            dev_counts[pn] = c
+        for pn, c in (
+            db.query(EdgeBox.pn, func.count()).filter(EdgeBox.pn.in_(pns)).group_by(EdgeBox.pn).all()
+        ):
+            eb_counts[pn] = c
+    for it in items:
+        pn = getattr(it, "pn")
+        it.count = (dev_counts.get(pn, 0) + eb_counts.get(pn, 0)) or 0
 
 
 HANDLERS = {
     "devices": {"before_save": _devices_before_save, "enrich": _devices_enrich},
     "edge_boxes": {"before_save": _edge_boxes_before_save},
+    "batches": {"before_save": _batches_before_save, "enrich": _batches_enrich},
 }
 
 
@@ -85,13 +151,18 @@ def build_router(resource: str):
     cfg = RESOURCES[resource]
     model = cfg["model"]
     handlers = HANDLERS.get(resource, {})
+    computed_columns = cfg.get("computed_columns", [])
 
     router = APIRouter(prefix=f"/{resource}", tags=[cfg["title"]])
 
     def _search_filter(keyword: str = None):
         if not keyword:
             return True
-        cols = [getattr(model, col) for col, _ in cfg["columns"]]
+        cols = [
+            getattr(model, col)
+            for col, _ in cfg["columns"]
+            if col not in computed_columns
+        ]
         like = f"%{keyword}%"
         return or_(*[c.like(like) for c in cols])
 
@@ -107,9 +178,9 @@ def build_router(resource: str):
     def _to_dict(obj):
         return {col: getattr(obj, col) for col, _ in cfg["columns"]}
 
-    def _apply_before_save(payload: dict, db: Session):
+    def _apply_before_save(payload: dict, db: Session, current_id=None):
         if "before_save" in handlers:
-            return handlers["before_save"](dict(payload), db)
+            return handlers["before_save"](dict(payload), db, current_id)
         return payload
 
     def _apply_enrich(items, db: Session):
@@ -165,7 +236,7 @@ def build_router(resource: str):
         obj = db.query(model).filter(model.id == item_id).first()
         if not obj:
             raise HTTPException(status_code=404, detail="记录不存在")
-        payload = _apply_before_save(payload, db)
+        payload = _apply_before_save(payload, db, current_id=item_id)
         for k, v in payload.items():
             if k != "id" and hasattr(obj, k):
                 setattr(obj, k, v if v is not None else None)

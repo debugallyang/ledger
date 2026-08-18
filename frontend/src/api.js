@@ -23,4 +23,9 @@ export const api = {
     fd.append('file', file)
     return http.post(`/import/${resource}`, fd, { params: { replace } })
   },
+  batchImport: (batchId, target, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return http.post(`/batches/${batchId}/import`, fd, { params: { target } })
+  },
 }
