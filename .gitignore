@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+backend/venv/
+
+# 数据库（数据文件不入库）
+data/ledger.db
+
+# 旧代码备份
+backend/app.bak/
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+
+# 日志与系统文件
+*.log
+.DS_Store

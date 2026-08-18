@@ -1,0 +1,158 @@
+:root {
+  --primary: #6366f1;
+  --primary-2: #8b5cf6;
+  --primary-3: #22d3ee;
+  --gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #22d3ee 100%);
+  --bg: #eef2f7;
+  --card: #ffffff;
+  --text: #1e293b;
+  --text-2: #64748b;
+  --border: #e2e8f0;
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 10px 40px rgba(15, 23, 42, 0.12);
+  --radius: 16px;
+  --sidebar-w: 248px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 全局背景渐变 ---------- */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(1000px 600px at 85% -10%, rgba(139, 92, 246, 0.12), transparent 60%),
+    radial-gradient(800px 500px at -10% 110%, rgba(34, 211, 238, 0.10), transparent 60%),
+    linear-gradient(180deg, #f4f6fb 0%, #eef2f7 100%);
+}
+
+/* ---------- Element Plus 主题覆盖 ---------- */
+:root {
+  --el-color-primary: #6366f1;
+  --el-border-radius-base: 10px;
+  --el-font-family: inherit;
+}
+
+.el-button {
+  border-radius: 10px;
+  font-weight: 500;
+  transition: all 0.18s ease;
+}
+
+.el-button--primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+.el-button--primary:hover {
+  background: linear-gradient(135deg, #5457e7, #7c4ff0);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.42);
+}
+
+.el-input__wrapper,
+.el-select__wrapper {
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--border) inset;
+  transition: box-shadow 0.2s;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35) inset !important;
+}
+
+.el-dialog {
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  padding: 22px 26px 0;
+}
+
+.el-dialog__title {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.el-dialog__body {
+  padding: 20px 26px 8px;
+}
+
+.el-dialog__footer {
+  padding: 12px 26px 24px;
+}
+
+.el-pagination {
+  --el-pagination-button-bg-color: transparent;
+}
+
+.el-pagination .el-pager li {
+  border-radius: 8px;
+}
+
+.el-pagination .el-pager li.is-active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+}
+
+.el-message {
+  border-radius: 12px;
+}
+
+.el-overlay {
+  backdrop-filter: blur(4px);
+}
+
+.el-upload-list {
+  display: none;
+}
+
+/* ---------- 动画 ---------- */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
