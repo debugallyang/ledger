@@ -40,6 +40,7 @@
         <el-option v-for="c in customerOptions" :key="c" :label="c === '__none__' ? '未分配' : c" :value="c" />
       </el-select>
 
+      <el-button v-if="!isBatches" :icon="Download" class="ghost-btn" @click="downloadTemplate">模板下载</el-button>
       <el-upload v-if="!isBatches" :show-file-list="false" :http-request="doImport" accept=".xlsx,.xls">
         <el-button :icon="Upload" class="ghost-btn">导入 Excel</el-button>
       </el-upload>
@@ -548,6 +549,10 @@ async function batchDelete() {
 function exportFile(format) {
   const url = api.exportUrl(props.resource, format, keyword.value)
   window.open(url, '_blank')
+}
+
+function downloadTemplate() {
+  window.open(api.templateUrl(props.resource), '_blank')
 }
 
 async function doImport({ file }) {

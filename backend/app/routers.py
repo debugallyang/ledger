@@ -106,6 +106,62 @@ def _read_sheet(raw, sheet_name: str):
     return df
 
 
+# 导入模板中的示例值（帮助用户按正确格式填写）
+_SAMPLE = {
+    "入库时间": "2026-08-18",
+    "出库时间": "2026-08-18",
+    "设备类型": "CPE",
+    "设备型号": "MA425W-716",
+    "设备SN": "253900001",
+    "SN": "253900001",
+    "PN": "abc12345",
+    "SSID": "WIFI-TEST",
+    "ICCID1": "89860000000000000000",
+    "ICCID2": "89860000000000000001",
+    "客户": "自用",
+    "门店": "示例门店",
+    "门店地址": "示例地址",
+    "出库历史": "示例",
+    "设备状态": "空闲中",
+    "卡1状态": "未激活",
+    "卡2状态": "未激活",
+    "iccid": "89860000000000000000",
+    "运营商": "移动",
+    "通讯类型": "4G",
+    "设备sn": "253900001",
+    "卡状态": "未激活",
+    "客户名称": "示例客户",
+    "联系人": "张三",
+    "联系电话": "13800000000",
+    "备注": "示例备注",
+}
+
+
+@router.get("/import/template/{resource}")
+def import_template(resource: str):
+    if resource not in RESOURCES:
+        raise HTTPException(status_code=404, detail="未知资源")
+    cfg = RESOURCES[resource]
+    cols = [c for c in cfg["columns"] if c[0] not in cfg.get("computed_columns", [])]
+    labels = [label for _, label in cols]
+    sample = {label: _SAMPLE.get(label, "") for label in labels}
+    df = pd.DataFrame([sample], columns=labels)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name=cfg["sheet"])
+    buf.seek(0)
+    fname = f"{cfg['title']}导入模板"
+    quoted = fname.encode("ascii", "ignore").decode() or "template"
+    encoded = quote(f"{fname}.xlsx".encode("utf-8"))
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{quoted}.xlsx\"; filename*=UTF-8''{encoded}"
+        },
+    )
+
+
 @router.post("/import/{resource}")
 async def import_items(
     resource: str,
@@ -122,18 +178,23 @@ async def import_items(
     if df.empty:
         raise HTTPException(status_code=400, detail="导入文件无数据")
 
-    col_map = {label: col for col, label in cfg["columns"]}
-    missing = [label for label in col_map if label not in df.columns]
-    if missing:
+    col_map = {
+        label: col
+        for col, label in cfg["columns"]
+        if col not in cfg.get("computed_columns", [])
+    }
+    matched = [label for label in col_map if label in df.columns]
+    if not matched:
         raise HTTPException(
             status_code=400,
-            detail=f"Excel缺少列: {', '.join(missing)}（需要sheet「{sheet}」且表头一致）",
+            detail=f"未识别到有效表头，请先下载导入模板（需sheet「{sheet}」且表头一致）",
         )
 
     rows = []
     for _, r in df.iterrows():
         record = {}
-        for label, col in col_map.items():
+        for label in matched:
+            col = col_map[label]
             v = r.get(label)
             if v is not None and not (isinstance(v, float) and pd.isna(v)):
                 record[col] = str(v) if not isinstance(v, str) else v

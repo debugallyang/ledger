@@ -18,6 +18,7 @@ export const api = {
     if (keyword) q.set('keyword', keyword)
     return `/api/export/${resource}?${q.toString()}`
   },
+  templateUrl: (resource) => `/api/import/template/${resource}`,
   import: (resource, file, replace = true) => {
     const fd = new FormData()
     fd.append('file', file)
