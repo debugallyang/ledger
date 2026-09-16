@@ -93,18 +93,7 @@ def _edge_boxes_before_save(payload: dict, db: Session, current_id=None):
 
 
 def _batches_before_save(payload: dict, db: Session, current_id=None):
-    pn = (payload.get("pn") or "").strip()
-    if not pn:
-        payload["pn"] = _gen_pn(db)
-    else:
-        q = db.query(Batch).filter(Batch.pn == pn)
-        if current_id:
-            q = q.filter(Batch.id != current_id)
-        if q.first():
-            raise HTTPException(
-                status_code=422,
-                detail=f"PN「{pn}」已存在，请重新生成",
-            )
+    payload["pn"] = _gen_pn(db)
 
     model_v = (payload.get("device_model") or "").strip()
     if model_v:

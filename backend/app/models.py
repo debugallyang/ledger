@@ -247,7 +247,7 @@ RESOURCES = {
         "readonly": ["device_type"],
         "readonly_hints": {"device_type": "从型号管理引用"},
         "hidden_in_table": [],
-        "hidden_in_form": ["count"],
+        "hidden_in_form": ["count", "pn"],
         "date_fields": [],
         "color_by": {},
         "computed_columns": ["count"],
