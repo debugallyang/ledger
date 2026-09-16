@@ -9,7 +9,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import RESOURCES, Batch
+from .models import RESOURCES, Batch, Device, IotCard
 
 router = APIRouter(tags=["通用"])
 
@@ -258,3 +258,24 @@ async def batch_import_items(
         "batch_pn": batch.pn,
         "target": target,
     }
+
+
+@router.post("/iot_cards/sync-device-sn")
+def sync_device_sn(db: Session = Depends(get_db)):
+    """以设备台账为标准，反向同步物联网卡的设备SN字段"""
+    devices = db.query(Device).all()
+    iccid_to_sn = {}
+    for d in devices:
+        if d.iccid1:
+            iccid_to_sn[d.iccid1] = d.device_sn
+        if d.iccid2:
+            iccid_to_sn[d.iccid2] = d.device_sn
+
+    updated = 0
+    for card in db.query(IotCard).all():
+        dev_sn = iccid_to_sn.get(card.iccid)
+        if dev_sn and card.device_sn != dev_sn:
+            card.device_sn = dev_sn
+            updated += 1
+    db.commit()
+    return {"ok": True, "updated": updated, "total_cards": db.query(IotCard).count()}

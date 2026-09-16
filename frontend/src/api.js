@@ -29,4 +29,5 @@ export const api = {
     fd.append('file', file)
     return http.post(`/batches/${batchId}/import`, fd, { params: { target } })
   },
+  syncDeviceSn: () => http.post('/iot_cards/sync-device-sn'),
 }

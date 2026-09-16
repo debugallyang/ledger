@@ -4,7 +4,9 @@
     <div class="stats" v-loading="statsLoading" element-loading-background="transparent">
       <div class="stat-card" v-for="s in statCards" :key="s.label">
         <div class="stat-icon" :style="{ background: s.bg, color: s.color }">
-          <el-icon><component :is="s.icon" /></el-icon>
+          <el-icon>
+            <component :is="s.icon" />
+          </el-icon>
         </div>
         <div class="stat-info">
           <div class="stat-value">{{ s.value }}</div>
@@ -16,27 +18,15 @@
     <!-- 工具栏 -->
     <div class="panel toolbar">
       <div class="search-box">
-        <el-input
-          v-model="keyword"
-          placeholder="关键词搜索，匹配所有列..."
-          clearable
-          :prefix-icon="Search"
-          @input="debouncedSearch"
-        >
+        <el-input v-model="keyword" placeholder="关键词搜索，匹配所有列..." clearable :prefix-icon="Search"
+          @input="debouncedSearch">
         </el-input>
       </div>
 
       <div class="spacer"></div>
 
-      <el-select
-        v-if="hasCustomerCol"
-        v-model="customerFilter"
-        filterable
-        clearable
-        placeholder="按客户筛选"
-        style="width: 190px"
-        @change="onCustomerFilter"
-      >
+      <el-select v-if="hasCustomerCol" v-model="customerFilter" filterable clearable placeholder="按客户筛选"
+        style="width: 190px" @change="onCustomerFilter">
         <el-option v-for="c in customerOptions" :key="c" :label="c === '__none__' ? '未分配' : c" :value="c" />
       </el-select>
 
@@ -54,6 +44,8 @@
         </template>
       </el-dropdown>
       <el-button :icon="Refresh" circle title="刷新" @click="refresh" />
+      <el-button v-if="props.resource === 'iot_cards'" :icon="Connection" class="ghost-btn"
+        @click="syncDeviceSn">同步设备SN</el-button>
       <el-button type="danger" :icon="Delete" :disabled="!selection.length" @click="batchDelete" class="danger-btn">
         删除 <span v-if="selection.length">({{ selection.length }})</span>
       </el-button>
@@ -62,29 +54,17 @@
 
     <!-- 表格 -->
     <div class="panel table-panel">
-      <el-table
-        :data="items"
-        v-loading="loading"
-        stripe
-        @selection-change="(rows) => (selection = rows)"
+      <el-table :data="items" v-loading="loading" stripe @selection-change="(rows) => (selection = rows)"
         :header-cell-style="{
           background: 'linear-gradient(180deg,#f8fafc,#f1f5f9)',
           color: '#334155',
           fontWeight: 600,
-        }"
-        row-class-name="trow"
-      >
+        }" row-class-name="trow">
         <el-table-column type="selection" width="46" fixed="left" />
         <el-table-column type="index" label="#" width="58" fixed="left" />
-        <el-table-column
-          v-for="col in tableColumns"
-          :key="col[0]"
-          :prop="col[0]"
-          :label="col[1]"
-          :width="isIccidCol(col[0]) ? 215 : undefined"
-          :min-width="isIccidCol(col[0]) ? undefined : 150"
-          show-overflow-tooltip
-        >
+        <el-table-column v-for="col in tableColumns" :key="col[0]" :prop="col[0]" :label="col[1]"
+          :width="isIccidCol(col[0]) ? 215 : undefined" :min-width="isIccidCol(col[0]) ? undefined : 150"
+          show-overflow-tooltip>
           <template #default="{ row }">
             <!-- ICCID 状态着色 -->
             <span v-if="colorBy[col[0]] && row[col[0]]" class="iccid-chip" :class="chipType(row[colorBy[col[0]]])">
@@ -115,16 +95,9 @@
 
       <div class="table-footer" v-if="total > 0">
         <span class="count-info">共 <b>{{ total }}</b> 条记录</span>
-        <el-pagination
-          layout="sizes, prev, pager, next"
-          :total="total"
-          :current-page="page"
-          :page-size="pageSize"
-          :page-sizes="[20, 50, 100, 200]"
-          background
-          @current-change="(p) => { page = p; load() }"
-          @size-change="(s) => { pageSize = s; page = 1; load() }"
-        />
+        <el-pagination layout="sizes, prev, pager, next" :total="total" :current-page="page" :page-size="pageSize"
+          :page-sizes="[20, 50, 100, 200]" background @current-change="(p) => { page = p; load() }"
+          @size-change="(s) => { pageSize = s; page = 1; load() }" />
       </div>
     </div>
 
@@ -133,31 +106,13 @@
       <el-form :model="form" label-width="120px" class="form-grid">
         <el-form-item v-for="col in formColumns" :key="col[0]" :label="col[1]">
           <!-- 日期选择 -->
-          <el-date-picker
-            v-if="isDateField(col[0])"
-            v-model="form[col[0]]"
-            type="date"
-            value-format="YYYY-MM-DD"
-            placeholder="选择日期"
-            clearable
-            style="width: 100%"
-          />
+          <el-date-picker v-if="isDateField(col[0])" v-model="form[col[0]]" type="date" value-format="YYYY-MM-DD"
+            placeholder="选择日期" clearable style="width: 100%" />
           <!-- 下拉选择 -->
           <template v-else-if="selectCfg(col[0])">
-            <el-select
-              v-model="form[col[0]]"
-              clearable
-              filterable
-              :placeholder="selPlaceholder(col[0])"
-              style="width: 100%"
-              @change="(v) => onSelectChange(col[0], v)"
-            >
-              <el-option
-                v-for="opt in selOptions(col[0])"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
-              >
+            <el-select v-model="form[col[0]]" clearable filterable :placeholder="selPlaceholder(col[0])"
+              style="width: 100%" @change="(v) => onSelectChange(col[0], v)">
+              <el-option v-for="opt in selOptions(col[0])" :key="opt.value" :label="opt.label" :value="opt.value">
                 <span>{{ opt.label }}</span>
                 <span v-if="opt.extra" class="opt-extra">{{ opt.extra }}</span>
               </el-option>
@@ -209,7 +164,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search, Plus, Delete, Download, Upload, Refresh, Check,
-  Collection, CircleCheck, Clock, Location, Files, User,
+  Collection, CircleCheck, Clock, Location, Files, User, Connection,
 } from '@element-plus/icons-vue'
 import { api } from './api'
 
@@ -553,6 +508,23 @@ function exportFile(format) {
 
 function downloadTemplate() {
   window.open(api.templateUrl(props.resource), '_blank')
+}
+
+async function syncDeviceSn() {
+  try {
+    await ElMessageBox.confirm(
+      '将以设备台账中的 ICCID→设备SN 关系为准，反向更新物联网卡台账中的设备SN字段。是否继续？',
+      '同步确认',
+      { confirmButtonText: '确定同步', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch { return }
+  try {
+    const { data } = await api.syncDeviceSn()
+    ElMessage.success(`同步完成，共 ${data.total_cards} 条记录，更新了 ${data.updated} 条`)
+    refresh()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '同步失败')
+  }
 }
 
 async function doImport({ file }) {

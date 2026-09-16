@@ -39,7 +39,7 @@ class IotCard(Base):
     operator = text_column()      # 运营商
     comm_type = text_column()     # 通讯类型
     device_sn = text_column()     # 设备sn
-    card_status = text_column()   # 卡状态（激活/未激活/停用）
+    card_status = text_column()   # 卡状态（激活/未激活/停用/销户）
 
 
 class EdgeBox(Base):
@@ -145,7 +145,7 @@ RESOURCES = {
             ("device_sn", "设备sn"),
             ("card_status", "卡状态"),
         ],
-        "selects": {"card_status": ["激活", "未激活", "停用"]},
+        "selects": {"card_status": ["激活", "未激活", "停用", "销户"]},
         "readonly": [],
         "readonly_hints": {},
         "hidden_in_table": [],
