@@ -1,5 +1,7 @@
 import io
 import os
+import re
+from datetime import datetime
 from urllib.parse import quote
 
 import pandas as pd
@@ -12,6 +14,31 @@ from .database import get_db
 from .models import RESOURCES, Batch
 
 router = APIRouter(tags=["通用"])
+
+
+def _normalize_date(v):
+    """将多种日期格式统一转换为 YYYY-MM-DD"""
+    if v is None:
+        return None
+    if isinstance(v, (datetime,)):
+        return v.strftime("%Y-%m-%d")
+    if hasattr(v, "strftime"):
+        return v.strftime("%Y-%m-%d")
+    s = str(v).strip()
+    if not s:
+        return None
+    # YYYY-MM-DD 已是标准格式
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return s
+    # YYYYMMDD
+    m = re.fullmatch(r"(\d{4})(\d{2})(\d{2})", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    # YYYY.MM.DD 或 YYYY/MM/DD
+    m = re.fullmatch(r"(\d{4})[./](\d{1,2})[./](\d{1,2})", s)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+    return s
 
 
 def _search_filter(model, columns, keyword):
@@ -191,13 +218,17 @@ async def import_items(
         )
 
     rows = []
+    date_cols = set(cfg.get("date_fields", []))
     for _, r in df.iterrows():
         record = {}
         for label in matched:
             col = col_map[label]
             v = r.get(label)
             if v is not None and not (isinstance(v, float) and pd.isna(v)):
-                record[col] = str(v) if not isinstance(v, str) else v
+                if col in date_cols:
+                    record[col] = _normalize_date(v)
+                else:
+                    record[col] = str(v) if not isinstance(v, str) else v
         rows.append(record)
 
     if replace:
@@ -236,6 +267,7 @@ async def batch_import_items(
         raise HTTPException(status_code=400, detail="导入文件无数据")
 
     col_map = {label: col for col, label in cfg["columns"]}
+    date_cols = set(cfg.get("date_fields", []))
     rows = []
     for _, r in df.iterrows():
         record = {}
@@ -243,7 +275,10 @@ async def batch_import_items(
             if label in df.columns:
                 v = r.get(label)
                 if v is not None and not (isinstance(v, float) and pd.isna(v)):
-                    record[col] = str(v) if not isinstance(v, str) else v
+                    if col in date_cols:
+                        record[col] = _normalize_date(v)
+                    else:
+                        record[col] = str(v) if not isinstance(v, str) else v
         record["pn"] = batch.pn
         record["device_type"] = batch.device_type
         record["device_model"] = batch.device_model
