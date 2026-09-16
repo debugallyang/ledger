@@ -149,7 +149,7 @@ RESOURCES = {
         "readonly": [],
         "readonly_hints": {},
         "hidden_in_table": [],
-        "hidden_in_form": [],
+        "hidden_in_form": ["device_sn"],
         "date_fields": [],
         "color_by": {},
         "computed_columns": [],

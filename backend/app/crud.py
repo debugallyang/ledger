@@ -39,6 +39,16 @@ def _resolve_pn_fields(payload: dict, db: Session, current_id=None):
 
 
 def _devices_before_save(payload: dict, db: Session, current_id=None):
+    device_sn = (payload.get("device_sn") or "").strip() or None
+
+    # 获取旧的ICCID（编辑时），用于处理换卡/解绑
+    old_iccid1, old_iccid2 = None, None
+    if current_id:
+        old_dev = db.query(Device).filter(Device.id == current_id).first()
+        if old_dev:
+            old_iccid1 = old_dev.iccid1
+            old_iccid2 = old_dev.iccid2
+
     for key, status_key in (("iccid1", "card1_status"), ("iccid2", "card2_status")):
         v = (payload.get(key) or "").strip()
         if v:
@@ -61,7 +71,27 @@ def _devices_before_save(payload: dict, db: Session, current_id=None):
             detail=f"客户「{cust}」未在客户管理中登记，请先在「客户管理」添加该客户后再引用",
         )
 
-    return _resolve_pn_fields(payload, db, current_id)
+    result = _resolve_pn_fields(payload, db, current_id)
+
+    # ---------- 自动同步：将设备SN写入对应物联网卡 ----------
+    new_iccid1 = result.get("iccid1")
+    new_iccid2 = result.get("iccid2")
+    new_set = {c for c in (new_iccid1, new_iccid2) if c}
+    old_set = {c for c in (old_iccid1, old_iccid2) if c}
+
+    # 旧卡中不再被本设备引用的 → 清空 device_sn
+    for old_iccid in old_set - new_set:
+        card = db.query(IotCard).filter(IotCard.iccid == old_iccid).first()
+        if card:
+            card.device_sn = None
+
+    # 新卡（含保留卡）→ 写入 device_sn
+    for iccid in new_set:
+        card = db.query(IotCard).filter(IotCard.iccid == iccid).first()
+        if card:
+            card.device_sn = device_sn
+
+    return result
 
 
 def _devices_enrich(items, db: Session):
@@ -82,6 +112,16 @@ def _devices_enrich(items, db: Session):
         it.card2_status = status.get(it.iccid2)
 
 
+def _devices_after_delete(items, db: Session):
+    """设备删除后，清理其已绑定物联网卡的 device_sn"""
+    for it in items:
+        for iccid in (it.iccid1, it.iccid2):
+            if iccid:
+                card = db.query(IotCard).filter(IotCard.iccid == iccid).first()
+                if card:
+                    card.device_sn = None
+
+
 def _edge_boxes_before_save(payload: dict, db: Session, current_id=None):
     cust = (payload.get("customer") or "").strip()
     if cust and not db.query(Customer).filter(Customer.name == cust).first():
@@ -90,6 +130,12 @@ def _edge_boxes_before_save(payload: dict, db: Session, current_id=None):
             detail=f"客户「{cust}」未在客户管理中登记，请先在「客户管理」添加该客户后再引用",
         )
     return _resolve_pn_fields(payload, db, current_id)
+
+
+def _iot_cards_before_save(payload: dict, db: Session, current_id=None):
+    """物联网卡台账的 device_sn 由设备台账自动同步，禁止手动写入"""
+    payload.pop("device_sn", None)
+    return payload
 
 
 def _batches_before_save(payload: dict, db: Session, current_id=None):
@@ -130,7 +176,12 @@ def _batches_enrich(items, db: Session):
 
 
 HANDLERS = {
-    "devices": {"before_save": _devices_before_save, "enrich": _devices_enrich},
+    "devices": {
+        "before_save": _devices_before_save,
+        "enrich": _devices_enrich,
+        "after_delete": _devices_after_delete,
+    },
+    "iot_cards": {"before_save": _iot_cards_before_save},
     "edge_boxes": {"before_save": _edge_boxes_before_save},
     "batches": {"before_save": _batches_before_save, "enrich": _batches_enrich},
 }
@@ -175,6 +226,10 @@ def build_router(resource: str):
     def _apply_enrich(items, db: Session):
         if "enrich" in handlers:
             handlers["enrich"](items, db)
+
+    def _apply_after_delete(items, db: Session):
+        if "after_delete" in handlers:
+            handlers["after_delete"](items, db)
 
     @router.get("")
     def list_items(
@@ -239,6 +294,7 @@ def build_router(resource: str):
         obj = db.query(model).filter(model.id == item_id).first()
         if not obj:
             raise HTTPException(status_code=404, detail="记录不存在")
+        _apply_after_delete([obj], db)
         db.delete(obj)
         db.commit()
         return {"ok": True}
@@ -251,6 +307,8 @@ def build_router(resource: str):
             raise HTTPException(status_code=422, detail="ids 格式错误")
         if not id_list:
             raise HTTPException(status_code=422, detail="ids 不能为空")
+        objs = db.query(model).filter(model.id.in_(id_list)).all()
+        _apply_after_delete(objs, db)
         deleted = db.query(model).filter(model.id.in_(id_list)).delete(synchronize_session=False)
         db.commit()
         return {"ok": True, "deleted": deleted}

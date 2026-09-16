@@ -44,8 +44,6 @@
         </template>
       </el-dropdown>
       <el-button :icon="Refresh" circle title="刷新" @click="refresh" />
-      <el-button v-if="props.resource === 'iot_cards'" :icon="Connection" class="ghost-btn"
-        @click="syncDeviceSn">同步设备SN</el-button>
       <el-button type="danger" :icon="Delete" :disabled="!selection.length" @click="batchDelete" class="danger-btn">
         删除 <span v-if="selection.length">({{ selection.length }})</span>
       </el-button>
@@ -164,7 +162,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search, Plus, Delete, Download, Upload, Refresh, Check,
-  Collection, CircleCheck, Clock, Location, Files, User, Connection,
+  Collection, CircleCheck, Clock, Location, Files, User,
 } from '@element-plus/icons-vue'
 import { api } from './api'
 
@@ -508,23 +506,6 @@ function exportFile(format) {
 
 function downloadTemplate() {
   window.open(api.templateUrl(props.resource), '_blank')
-}
-
-async function syncDeviceSn() {
-  try {
-    await ElMessageBox.confirm(
-      '将以设备台账中的 ICCID→设备SN 关系为准，反向更新物联网卡台账中的设备SN字段。是否继续？',
-      '同步确认',
-      { confirmButtonText: '确定同步', cancelButtonText: '取消', type: 'warning' }
-    )
-  } catch { return }
-  try {
-    const { data } = await api.syncDeviceSn()
-    ElMessage.success(`同步完成，共 ${data.total_cards} 条记录，更新了 ${data.updated} 条`)
-    refresh()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '同步失败')
-  }
 }
 
 async function doImport({ file }) {
