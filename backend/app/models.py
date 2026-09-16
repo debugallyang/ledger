@@ -145,7 +145,7 @@ RESOURCES = {
             ("device_sn", "设备sn"),
             ("card_status", "卡状态"),
         ],
-        "selects": {"card_status": ["激活", "未激活", "停用", "销户"]},
+        "selects": {"card_status": ["激活", "未激活", "停用", "销户"], "operator": ["电信", "移动", "联通"]},
         "readonly": [],
         "readonly_hints": {},
         "hidden_in_table": [],

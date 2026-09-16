@@ -30,6 +30,11 @@
         <el-option v-for="c in customerOptions" :key="c" :label="c === '__none__' ? '未分配' : c" :value="c" />
       </el-select>
 
+      <el-select v-if="hasOperatorCol" v-model="operatorFilter" filterable clearable placeholder="按运营商筛选"
+        style="width: 160px" @change="onOperatorFilter">
+        <el-option v-for="o in operatorOptions" :key="o" :label="o" :value="o" />
+      </el-select>
+
       <el-button v-if="!isBatches" :icon="Download" class="ghost-btn" @click="downloadTemplate">模板下载</el-button>
       <el-upload v-if="!isBatches" :show-file-list="false" :http-request="doImport" accept=".xlsx,.xls">
         <el-button :icon="Upload" class="ghost-btn">导入 Excel</el-button>
@@ -215,7 +220,16 @@ const STAT_CFG = {
     activeLabel: '已部署',
     metric: { label: '已分配客户', icon: User, fn: (r) => new Set(r.map((x) => (x.customer || '').trim()).filter(Boolean)).size },
   },
-  iot_cards: { primary: 'card_status', metric: { label: '已绑定设备', icon: Files, fn: (r) => r.filter((x) => x.device_sn).length } },
+  iot_cards: {
+    primary: 'card_status',
+    customStatuses: [
+      { label: '激活', value: '激活', icon: CircleCheck, bg: 'linear-gradient(135deg,#10b981,#34d399)', color: '#fff' },
+      { label: '未激活', value: '未激活', icon: Clock, bg: 'linear-gradient(135deg,#f59e0b,#fbbf24)', color: '#fff' },
+      { label: '停用', value: '停用', icon: Clock, bg: 'linear-gradient(135deg,#ef4444,#f97316)', color: '#fff' },
+      { label: '销户', value: '销户', icon: Clock, bg: 'linear-gradient(135deg,#6b7280,#9ca3af)', color: '#fff' },
+    ],
+    metric: { label: '已绑定设备', icon: Files, fn: (r) => r.filter((x) => x.device_sn).length },
+  },
   edge_boxes: {
     primary: 'device_status',
     activeStatuses: ['使用中'],
@@ -237,7 +251,17 @@ const statCards = computed(() => {
   const cards = [
     { label: '总记录', value: rows.length, icon: Collection, bg: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff' },
   ]
-  if (!cfg.forcePending) {
+  if (cfg.customStatuses) {
+    cfg.customStatuses.forEach((s) => {
+      cards.push({
+        label: s.label,
+        value: rows.filter((r) => r[cfg.primary] === s.value).length,
+        icon: s.icon,
+        bg: s.bg,
+        color: s.color,
+      })
+    })
+  } else if (!cfg.forcePending) {
     const deployed = rows.filter((r) => (cfg.activeStatuses || ['激活', '启用', '正常']).includes(r[cfg.primary])).length
     cards.push({
       label: cfg.activeLabel || '有效启用',
@@ -271,6 +295,10 @@ const hasCustomerCol = computed(() => columns.value.some((c) => c[0] === 'custom
 const customerFilter = ref('')
 const customerOptions = ref([])
 
+const hasOperatorCol = computed(() => columns.value.some((c) => c[0] === 'operator'))
+const operatorFilter = ref('')
+const operatorOptions = ref([])
+
 async function loadCustomerOptions() {
   try {
     const { data } = await api.all(props.resource)
@@ -288,6 +316,25 @@ async function loadCustomerOptions() {
 }
 
 function onCustomerFilter() {
+  page.value = 1
+  refresh()
+}
+
+async function loadOperatorOptions() {
+  try {
+    const { data } = await api.all(props.resource)
+    const set = new Set()
+    data.items.forEach((r) => {
+      const o = (r.operator || '').trim()
+      if (o) set.add(o)
+    })
+    operatorOptions.value = [...set].sort()
+  } catch {
+    operatorOptions.value = []
+  }
+}
+
+function onOperatorFilter() {
   page.value = 1
   refresh()
 }
@@ -350,6 +397,7 @@ async function load() {
     const { data } = await api.list(props.resource, {
       keyword: keyword.value || undefined,
       customer: customerFilter.value || undefined,
+      operator: operatorFilter.value || undefined,
       page: page.value,
       page_size: pageSize.value,
     })
@@ -549,6 +597,7 @@ onMounted(async () => {
   dateFields.value = data[props.resource].date_fields || []
   colorBy.value = data[props.resource].color_by || {}
   if (hasCustomerCol.value) await loadCustomerOptions()
+  if (hasOperatorCol.value) await loadOperatorOptions()
   await loadPools()
   refresh()
 })

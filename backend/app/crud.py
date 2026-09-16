@@ -215,6 +215,13 @@ def build_router(resource: str):
             return or_(model.customer.is_(None), model.customer == "")
         return model.customer == customer
 
+    def _operator_filter(operator: str = None):
+        if not hasattr(model, "operator"):
+            return None
+        if not operator:
+            return None
+        return model.operator == operator
+
     def _to_dict(obj):
         return {col: getattr(obj, col) for col, _ in cfg["columns"]}
 
@@ -235,6 +242,7 @@ def build_router(resource: str):
     def list_items(
         keyword: str = Query(None, description="关键词，模糊搜索所有列"),
         customer: str = Query(None, description="按客户筛选，__none__ 表示未分配"),
+        operator: str = Query(None, description="按运营商筛选"),
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=500),
         db: Session = Depends(get_db),
@@ -243,6 +251,9 @@ def build_router(resource: str):
         cf = _customer_filter(customer)
         if cf is not None:
             q = q.filter(cf)
+        of = _operator_filter(operator)
+        if of is not None:
+            q = q.filter(of)
         total = q.count()
         items = (
             q.order_by(model.id)
