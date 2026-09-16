@@ -1,5 +1,19 @@
 <template>
   <div class="lv">
+    <!-- 搜索与筛选 -->
+    <div class="panel search-panel">
+      <div class="search-box">
+        <el-input v-model="keyword" placeholder="关键词搜索，匹配所有列..." clearable :prefix-icon="Search"
+          @input="debouncedSearch">
+        </el-input>
+      </div>
+
+      <el-select v-if="hasCustomerCol" v-model="customerFilter" filterable clearable placeholder="按客户筛选"
+        style="width: 190px" @change="onCustomerFilter">
+        <el-option v-for="c in customerOptions" :key="c" :label="c === '__none__' ? '未分配' : c" :value="c" />
+      </el-select>
+    </div>
+
     <!-- 统计卡片 -->
     <div class="stats" v-loading="statsLoading" element-loading-background="transparent">
       <div class="stat-card" v-for="s in statCards" :key="s.label">
@@ -17,18 +31,7 @@
 
     <!-- 工具栏 -->
     <div class="panel toolbar">
-      <div class="search-box">
-        <el-input v-model="keyword" placeholder="关键词搜索，匹配所有列..." clearable :prefix-icon="Search"
-          @input="debouncedSearch">
-        </el-input>
-      </div>
-
       <div class="spacer"></div>
-
-      <el-select v-if="hasCustomerCol" v-model="customerFilter" filterable clearable placeholder="按客户筛选"
-        style="width: 190px" @change="onCustomerFilter">
-        <el-option v-for="c in customerOptions" :key="c" :label="c === '__none__' ? '未分配' : c" :value="c" />
-      </el-select>
 
       <el-button v-if="!isBatches" :icon="Download" class="ghost-btn" @click="downloadTemplate">模板下载</el-button>
       <el-upload v-if="!isBatches" :show-file-list="false" :http-request="doImport" accept=".xlsx,.xls">
@@ -617,6 +620,14 @@ onUnmounted(() => clearTimeout(debounceTimer))
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   border: 1px solid rgba(226, 232, 240, 0.7);
+}
+
+.search-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  flex-wrap: wrap;
 }
 
 .toolbar {
