@@ -237,6 +237,14 @@ const STAT_CFG = {
     activeLabel: '已部署',
     metric: { label: '已分配客户', icon: User, fn: (r) => new Set(r.map((x) => (x.customer || '').trim()).filter(Boolean)).size },
   },
+  edge_box_infos: {
+    primary: 'device_status',
+    activeStatuses: ['使用中'],
+    pendingStatuses: ['空闲中'],
+    activeLabel: '使用中',
+    pendingLabel: '空闲中',
+    metric: { label: '已分配客户', icon: User, fn: (r) => new Set(r.map((x) => (x.customer || '').trim()).filter(Boolean)).size },
+  },
   customers: { primary: 'name', metric: { label: '被设备引用', icon: Location, fn: (r) => r.length }, forcePending: true },
   assets: { primary: 'asset_model', metric: { label: '型号总数', icon: Files, fn: (r) => r.length }, forcePending: true },
   batches: { primary: 'pn', metric: { label: '设备总数', icon: Files, fn: (r) => r.reduce((s, x) => s + (Number(x.count) || 0), 0) }, forcePending: true },
@@ -273,7 +281,7 @@ const statCards = computed(() => {
     const pendStatuses = cfg.pendingStatuses || ['未激活', '未启用']
     if (pendStatuses.length) {
       cards.push({
-        label: '待激活',
+        label: cfg.pendingLabel || '待激活',
         value: rows.filter((r) => pendStatuses.includes(r[cfg.primary])).length,
         icon: Clock,
         bg: 'linear-gradient(135deg,#f59e0b,#fbbf24)',

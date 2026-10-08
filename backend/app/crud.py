@@ -6,7 +6,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import RESOURCES, Asset, Batch, Customer, Device, EdgeBox, IotCard
+from .models import RESOURCES, Asset, Batch, Customer, Device, EdgeBox, EdgeBoxInfo, IotCard
 
 
 def _gen_pn(db: Session) -> str:
@@ -138,6 +138,35 @@ def _iot_cards_before_save(payload: dict, db: Session, current_id=None):
     return payload
 
 
+def _edge_box_infos_before_save(payload: dict, db: Session, current_id=None):
+    """边缘盒子信息：设备状态默认空闲中；客户必须已登记；SN 全表唯一"""
+    # 上报字段只由 /api/register 维护，禁止手工写入
+    for key in ("zt_id", "zt_addr", "last_seen"):
+        payload.pop(key, None)
+
+    sn = (payload.get("sn") or "").strip()
+    if not sn:
+        raise HTTPException(status_code=422, detail="设备SN不能为空")
+    payload["sn"] = sn
+    dup = db.query(EdgeBoxInfo).filter(EdgeBoxInfo.sn == sn)
+    if current_id:
+        dup = dup.filter(EdgeBoxInfo.id != current_id)
+    if dup.first():
+        raise HTTPException(status_code=422, detail=f"设备SN「{sn}」已存在，请勿重复登记")
+
+    cust = (payload.get("customer") or "").strip()
+    if cust and not db.query(Customer).filter(Customer.name == cust).first():
+        raise HTTPException(
+            status_code=422,
+            detail=f"客户「{cust}」未在客户管理中登记，请先在「客户管理」添加该客户后再引用",
+        )
+
+    status = (payload.get("device_status") or "").strip()
+    if status not in ("使用中", "空闲中"):
+        payload["device_status"] = "空闲中"
+    return payload
+
+
 def _batches_before_save(payload: dict, db: Session, current_id=None):
     payload["pn"] = _gen_pn(db)
 
@@ -183,6 +212,7 @@ HANDLERS = {
     },
     "iot_cards": {"before_save": _iot_cards_before_save},
     "edge_boxes": {"before_save": _edge_boxes_before_save},
+    "edge_box_infos": {"before_save": _edge_box_infos_before_save},
     "batches": {"before_save": _batches_before_save, "enrich": _batches_enrich},
 }
 

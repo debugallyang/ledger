@@ -11,8 +11,8 @@
           </svg>
         </div>
         <div class="logo-text">
-          <div class="logo-title">台账中心</div>
-          <div class="logo-sub">设备 · 卡 · 盒子</div>
+          <div class="logo-title">设备自动注册平台</div>
+          <div class="logo-sub">自动注册 · 远程管理</div>
         </div>
       </div>
 
@@ -82,10 +82,11 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { Cpu, CreditCard, Box, User, Suitcase, Files } from '@element-plus/icons-vue'
+import { Cpu, CreditCard, Box, User, Suitcase, Files, Monitor } from '@element-plus/icons-vue'
 import LedgerView from './LedgerView.vue'
 
 const menus = [
+  { resource: 'edge_box_infos', title: '边缘盒子信息', desc: '末端设备自动注册上报的 SN、ZT ID 与 IP 地址', icon: Monitor },
   { resource: 'devices', title: '设备台账', desc: '管理设备、ICCID 卡绑定与部署去向', icon: Cpu },
   { resource: 'iot_cards', title: '物联网卡台账', desc: '管理物联网卡 iccid、运营商与卡状态', icon: CreditCard },
   { resource: 'edge_boxes', title: '边缘盒子台账', desc: '管理边缘盒子 SN、PN 与部署去向', icon: Box },
@@ -100,7 +101,7 @@ const menus = [
   },
 ]
 
-const active = ref('devices')
+const active = ref('edge_box_infos')
 const openGroups = ref(new Set())
 
 function isGroupActive(m) {

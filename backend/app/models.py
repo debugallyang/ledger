@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text
+from sqlalchemy import Column, Integer, Text, UniqueConstraint
 
 from .database import Base
 
@@ -57,6 +57,27 @@ class EdgeBox(Base):
     outbound_time = text_column()  # 出库时间（日期）
     outbound_history = text_column()  # 出库历史
     device_status = text_column()  # 设备状态（使用中/空闲中/损坏）
+
+
+class EdgeBoxInfo(Base):
+    """边缘盒子信息：由末端设备通过 /api/register 自动注册创建/更新"""
+
+    __tablename__ = "edge_box_infos"
+    __table_args__ = (UniqueConstraint("sn", name="uq_edge_box_infos_sn"),)
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    sn = text_column()              # 设备SN（自动注册上报，唯一）
+    zt_id = text_column()           # ZT ID（自动注册上报）
+    zt_addr = text_column()         # IP地址（自动注册上报）
+    last_seen = text_column()       # 最后上报时间（自动注册刷新）
+    customer = text_column()        # 客户（引用客户管理）
+    store = text_column()           # 门店
+    store_address = text_column()   # 门店地址
+    outbound_time = text_column()   # 出库时间
+    outbound_history = text_column()# 出库历史
+    contact = text_column()         # 联系人
+    phone = text_column()           # 联系手机号
+    device_status = text_column()   # 设备状态（使用中/空闲中）
 
 
 class Customer(Base):
@@ -187,6 +208,40 @@ RESOURCES = {
         "hidden_in_table": ["device_type", "device_model"],
         "hidden_in_form": ["device_type", "device_model"],
         "date_fields": ["inbound_time", "outbound_time"],
+        "color_by": {},
+        "computed_columns": [],
+    },
+    "edge_box_infos": {
+        "title": "边缘盒子信息",
+        "sheet": "边缘盒子信息",
+        "model": EdgeBoxInfo,
+        "columns": [
+            ("sn", "设备SN"),
+            ("zt_id", "ZT ID"),
+            ("zt_addr", "IP地址"),
+            ("last_seen", "最后上报时间"),
+            ("customer", "客户"),
+            ("store", "门店"),
+            ("store_address", "门店地址"),
+            ("outbound_time", "出库时间"),
+            ("outbound_history", "出库历史"),
+            ("contact", "联系人"),
+            ("phone", "联系手机号"),
+            ("device_status", "设备状态"),
+        ],
+        "selects": {
+            "device_status": ["使用中", "空闲中"],
+            "customer": {"from": "customers", "value": "name"},
+        },
+        "readonly": ["zt_id", "zt_addr", "last_seen"],
+        "readonly_hints": {
+            "zt_id": "由设备上报",
+            "zt_addr": "由设备上报",
+            "last_seen": "自动记录",
+        },
+        "hidden_in_table": [],
+        "hidden_in_form": ["last_seen"],
+        "date_fields": ["outbound_time"],
         "color_by": {},
         "computed_columns": [],
     },

@@ -11,7 +11,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import RESOURCES, Batch
+from .models import RESOURCES, Batch, EdgeBoxInfo
 
 router = APIRouter(tags=["通用"])
 
@@ -47,6 +47,39 @@ def _search_filter(model, columns, keyword):
     cols = [getattr(model, col) for col, _ in columns]
     like = f"%{keyword}%"
     return or_(*[c.like(like) for c in cols])
+
+
+@router.post("/register")
+def register_device(payload: dict, db: Session = Depends(get_db)):
+    """末端设备自动注册接口：按 SN 幂等，存在则更新上报字段，否则创建新记录"""
+    sn = (payload.get("sn") or "").strip() if isinstance(payload, dict) else ""
+    if not sn:
+        raise HTTPException(status_code=422, detail="sn 不能为空")
+
+    zt_id = (payload.get("zt_id") or "").strip() or None
+    zt_addr = (payload.get("zt_addr") or "").strip() or None
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    obj = db.query(EdgeBoxInfo).filter(EdgeBoxInfo.sn == sn).first()
+    if obj:
+        obj.zt_id = zt_id
+        obj.zt_addr = zt_addr
+        obj.last_seen = now
+        db.commit()
+        db.refresh(obj)
+        return {"ok": True, "action": "updated", "id": obj.id, "sn": sn}
+
+    obj = EdgeBoxInfo(
+        sn=sn,
+        zt_id=zt_id,
+        zt_addr=zt_addr,
+        last_seen=now,
+        device_status="空闲中",
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return {"ok": True, "action": "created", "id": obj.id, "sn": sn}
 
 
 @router.get("/meta/columns")
@@ -141,6 +174,9 @@ _SAMPLE = {
     "设备型号": "MA425W-716",
     "设备SN": "253900001",
     "SN": "253900001",
+    "ZT ID": "d0e1a198f6",
+    "IP地址": "10.27.1.11",
+    "最后上报时间": "2026-10-08 12:00:00",
     "PN": "abc12345",
     "SSID": "WIFI-TEST",
     "ICCID1": "89860000000000000000",
@@ -160,6 +196,7 @@ _SAMPLE = {
     "客户名称": "示例客户",
     "联系人": "张三",
     "联系电话": "13800000000",
+    "联系手机号": "13800000000",
     "备注": "示例备注",
 }
 
@@ -231,9 +268,23 @@ async def import_items(
                     record[col] = str(v) if not isinstance(v, str) else v
         rows.append(record)
 
+    # 边缘盒子信息：与 /api/register 的按 SN 幂等语义一致 —— 文件内重复的 SN 去重，
+    # 追加导入（replace=false）时跳过库中已存在的 SN；清空导入（replace=true）不受库内影响
+    if resource == "edge_box_infos":
+        existing = set() if replace else {s for s, in db.query(EdgeBoxInfo.sn).all()}
+        seen, uniq = set(), []
+        for r in rows:
+            sn = (r.get("sn") or "").strip()
+            if not sn or sn in seen or sn in existing:
+                continue
+            seen.add(sn)
+            uniq.append(r)
+        rows = uniq
+
     if replace:
         db.query(model).delete()
-    db.bulk_insert_mappings(model, rows)
+    if rows:
+        db.bulk_insert_mappings(model, rows)
     db.commit()
     return {"ok": True, "imported": len(rows), "replace": replace}
 
