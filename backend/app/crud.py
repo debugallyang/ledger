@@ -39,6 +39,10 @@ def _resolve_pn_fields(payload: dict, db: Session, current_id=None):
 
 
 def _devices_before_save(payload: dict, db: Session, current_id=None):
+    # 上报字段只由 /api/register 维护，禁止手工写入
+    for key in ("zt_id", "zt_addr", "last_seen"):
+        payload.pop(key, None)
+
     device_sn = (payload.get("device_sn") or "").strip() or None
 
     # 获取旧的ICCID（编辑时），用于处理换卡/解绑

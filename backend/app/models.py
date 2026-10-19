@@ -19,6 +19,9 @@ class Device(Base):
     ssid = text_column()          # SSID
     iccid1 = text_column()        # ICCID1（引用物联网卡台账）
     iccid2 = text_column()        # ICCID2（引用物联网卡台账）
+    zt_id = text_column()         # ZT ID（自动注册上报）
+    zt_addr = text_column()       # IP地址（自动注册上报）
+    last_seen = text_column()     # 最后上报时间（自动注册刷新）
     customer = text_column()      # 客户（引用客户管理）
     store = text_column()         # 门店（手动输入）
     store_address = text_column() # 门店地址
@@ -111,6 +114,9 @@ RESOURCES = {
             ("ssid", "SSID"),
             ("iccid1", "ICCID1"),
             ("iccid2", "ICCID2"),
+            ("zt_id", "ZT ID"),
+            ("zt_addr", "IP地址"),
+            ("last_seen", "最后上报时间"),
             ("customer", "客户"),
             ("store", "门店"),
             ("store_address", "门店地址"),
@@ -133,10 +139,14 @@ RESOURCES = {
             "iccid1": {"from": "iot_cards", "value": "iccid"},
             "iccid2": {"from": "iot_cards", "value": "iccid"},
         },
-        "readonly": [],
-        "readonly_hints": {},
+        "readonly": ["zt_id", "zt_addr", "last_seen"],
+        "readonly_hints": {
+            "zt_id": "由设备上报",
+            "zt_addr": "由设备上报",
+            "last_seen": "自动记录",
+        },
         "hidden_in_table": ["card1_status", "card2_status", "device_type", "device_model"],
-        "hidden_in_form": ["card1_status", "card2_status", "device_type", "device_model"],
+        "hidden_in_form": ["card1_status", "card2_status", "device_type", "device_model", "last_seen"],
         "date_fields": ["inbound_time", "outbound_time"],
         "color_by": {"iccid1": "card1_status", "iccid2": "card2_status"},
         "computed_columns": [],

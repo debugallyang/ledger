@@ -11,7 +11,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import RESOURCES, Batch, EdgeBox
+from .models import RESOURCES, Batch, Device, EdgeBox
 
 router = APIRouter(tags=["通用"])
 
@@ -51,15 +51,43 @@ def _search_filter(model, columns, keyword):
 
 @router.post("/register")
 def register_device(payload: dict, db: Session = Depends(get_db)):
-    """末端设备自动注册接口：按 SN 合并进边缘盒子管理表。
-    已登记则只刷新 ZT ID / IP地址 / 最后上报时间，其余字段保留；未登记则新建（空闲中）。"""
-    sn = (payload.get("sn") or "").strip() if isinstance(payload, dict) else ""
+    """末端设备自动注册接口。
+
+    请求体可带 "type" 指定目标台账：
+      - "device"    → 设备台账（按 device_sn 合并，可命中多行全部刷新）
+      - 缺省/"edge_box" → 边缘盒子管理（按 sn 合并）
+    已登记则只刷新 ZT ID / IP地址 / 最后上报时间，其余登记字段保留；未登记则新建（空闲中）。"""
+    if not isinstance(payload, dict):
+        payload = {}
+    target = (payload.get("type") or "edge_box").strip()
+    sn = (payload.get("sn") or "").strip()
     if not sn:
         raise HTTPException(status_code=422, detail="sn 不能为空")
 
     zt_id = (payload.get("zt_id") or "").strip() or None
     zt_addr = (payload.get("zt_addr") or "").strip() or None
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if target == "device":
+        rows = db.query(Device).filter(Device.device_sn == sn).all()
+        if rows:
+            for obj in rows:
+                obj.zt_id = zt_id
+                obj.zt_addr = zt_addr
+                obj.last_seen = now
+            db.commit()
+            return {"ok": True, "action": "updated", "target": "devices", "sn": sn, "updated": len(rows)}
+        obj = Device(
+            device_sn=sn,
+            zt_id=zt_id,
+            zt_addr=zt_addr,
+            last_seen=now,
+            device_status="空闲中",
+        )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return {"ok": True, "action": "created", "target": "devices", "id": obj.id, "sn": sn}
 
     obj = db.query(EdgeBox).filter(EdgeBox.sn == sn).first()
     if obj:
@@ -68,7 +96,7 @@ def register_device(payload: dict, db: Session = Depends(get_db)):
         obj.last_seen = now
         db.commit()
         db.refresh(obj)
-        return {"ok": True, "action": "updated", "id": obj.id, "sn": sn}
+        return {"ok": True, "action": "updated", "target": "edge_boxes", "id": obj.id, "sn": sn}
 
     obj = EdgeBox(
         sn=sn,
@@ -80,7 +108,7 @@ def register_device(payload: dict, db: Session = Depends(get_db)):
     db.add(obj)
     db.commit()
     db.refresh(obj)
-    return {"ok": True, "action": "created", "id": obj.id, "sn": sn}
+    return {"ok": True, "action": "created", "target": "edge_boxes", "id": obj.id, "sn": sn}
 
 
 @router.get("/meta/columns")
