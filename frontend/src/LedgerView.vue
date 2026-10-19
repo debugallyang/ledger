@@ -148,7 +148,7 @@
         <el-form-item label="目标台账">
           <el-radio-group v-model="importTarget">
             <el-radio value="devices">设备台账</el-radio>
-            <el-radio value="edge_boxes">边缘盒子台账</el-radio>
+            <el-radio value="edge_boxes">边缘盒子管理</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="Excel 文件">
@@ -231,13 +231,6 @@ const STAT_CFG = {
     metric: { label: '已绑定设备', icon: Files, fn: (r) => r.filter((x) => x.device_sn).length },
   },
   edge_boxes: {
-    primary: 'device_status',
-    activeStatuses: ['使用中'],
-    pendingStatuses: [],
-    activeLabel: '已部署',
-    metric: { label: '已分配客户', icon: User, fn: (r) => new Set(r.map((x) => (x.customer || '').trim()).filter(Boolean)).size },
-  },
-  edge_box_infos: {
     primary: 'device_status',
     activeStatuses: ['使用中'],
     pendingStatuses: ['空闲中'],

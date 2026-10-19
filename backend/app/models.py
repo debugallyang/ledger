@@ -43,41 +43,28 @@ class IotCard(Base):
 
 
 class EdgeBox(Base):
+    """边缘盒子管理：手动入库登记 + 末端设备 /api/register 自动注册合并的同一张表"""
+
     __tablename__ = "edge_boxes"
+    __table_args__ = (UniqueConstraint("sn", name="uq_edge_boxes_sn"),)
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     inbound_time = text_column()   # 入库时间
     device_type = text_column()    # 设备类型（从批次引用）
     device_model = text_column()   # 设备型号（从批次引用）
-    sn = text_column()             # 设备SN
+    sn = text_column()             # 设备SN（手动登记 + 自动注册，唯一）
     pn = text_column()             # PN（引用批次管理）
+    zt_id = text_column()          # ZT ID（自动注册上报）
+    zt_addr = text_column()        # IP地址（自动注册上报）
+    last_seen = text_column()      # 最后上报时间（自动注册刷新）
     customer = text_column()       # 客户（引用客户管理）
     store = text_column()          # 门店（手动输入）
     store_address = text_column()  # 门店地址
     outbound_time = text_column()  # 出库时间（日期）
     outbound_history = text_column()  # 出库历史
+    contact = text_column()        # 联系人
+    phone = text_column()          # 联系手机号
     device_status = text_column()  # 设备状态（使用中/空闲中/损坏）
-
-
-class EdgeBoxInfo(Base):
-    """边缘盒子信息：由末端设备通过 /api/register 自动注册创建/更新"""
-
-    __tablename__ = "edge_box_infos"
-    __table_args__ = (UniqueConstraint("sn", name="uq_edge_box_infos_sn"),)
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    sn = text_column()              # 设备SN（自动注册上报，唯一）
-    zt_id = text_column()           # ZT ID（自动注册上报）
-    zt_addr = text_column()         # IP地址（自动注册上报）
-    last_seen = text_column()       # 最后上报时间（自动注册刷新）
-    customer = text_column()        # 客户（引用客户管理）
-    store = text_column()           # 门店
-    store_address = text_column()   # 门店地址
-    outbound_time = text_column()   # 出库时间
-    outbound_history = text_column()# 出库历史
-    contact = text_column()         # 联系人
-    phone = text_column()           # 联系手机号
-    device_status = text_column()   # 设备状态（使用中/空闲中）
 
 
 class Customer(Base):
@@ -176,47 +163,15 @@ RESOURCES = {
         "computed_columns": [],
     },
     "edge_boxes": {
-        "title": "边缘盒子台账",
+        "title": "边缘盒子管理",
         "sheet": "边缘盒子",
         "model": EdgeBox,
         "columns": [
             ("inbound_time", "入库时间"),
-            ("device_type", "设备类型"),
-            ("device_model", "设备型号"),
             ("sn", "设备SN"),
             ("pn", "PN"),
-            ("customer", "客户"),
-            ("store", "门店"),
-            ("store_address", "门店地址"),
-            ("outbound_time", "出库时间"),
-            ("outbound_history", "出库历史"),
-            ("device_status", "设备状态"),
-        ],
-        "selects": {
-            "pn": {
-                "from": "batches", "value": "pn",
-                "linked": [
-                    {"target": "device_type", "source": "device_type"},
-                    {"target": "device_model", "source": "device_model"},
-                ],
-            },
-            "customer": {"from": "customers", "value": "name"},
-            "device_status": ["使用中", "空闲中", "损坏"],
-        },
-        "readonly": [],
-        "readonly_hints": {},
-        "hidden_in_table": ["device_type", "device_model"],
-        "hidden_in_form": ["device_type", "device_model"],
-        "date_fields": ["inbound_time", "outbound_time"],
-        "color_by": {},
-        "computed_columns": [],
-    },
-    "edge_box_infos": {
-        "title": "边缘盒子信息",
-        "sheet": "边缘盒子信息",
-        "model": EdgeBoxInfo,
-        "columns": [
-            ("sn", "设备SN"),
+            ("device_type", "设备类型"),
+            ("device_model", "设备型号"),
             ("zt_id", "ZT ID"),
             ("zt_addr", "IP地址"),
             ("last_seen", "最后上报时间"),
@@ -230,8 +185,15 @@ RESOURCES = {
             ("device_status", "设备状态"),
         ],
         "selects": {
-            "device_status": ["使用中", "空闲中"],
+            "pn": {
+                "from": "batches", "value": "pn",
+                "linked": [
+                    {"target": "device_type", "source": "device_type"},
+                    {"target": "device_model", "source": "device_model"},
+                ],
+            },
             "customer": {"from": "customers", "value": "name"},
+            "device_status": ["使用中", "空闲中", "损坏"],
         },
         "readonly": ["zt_id", "zt_addr", "last_seen"],
         "readonly_hints": {
@@ -239,9 +201,9 @@ RESOURCES = {
             "zt_addr": "由设备上报",
             "last_seen": "自动记录",
         },
-        "hidden_in_table": [],
-        "hidden_in_form": ["last_seen"],
-        "date_fields": ["outbound_time"],
+        "hidden_in_table": ["device_type", "device_model"],
+        "hidden_in_form": ["device_type", "device_model", "last_seen"],
+        "date_fields": ["inbound_time", "outbound_time"],
         "color_by": {},
         "computed_columns": [],
     },

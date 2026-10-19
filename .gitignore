@@ -5,6 +5,7 @@ backend/venv/
 
 # 数据库（数据文件不入库）
 data/ledger.db
+data/ledger.db.bak-*
 
 # 旧代码备份
 backend/app.bak/

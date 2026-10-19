@@ -11,7 +11,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import RESOURCES, Batch, EdgeBoxInfo
+from .models import RESOURCES, Batch, EdgeBox
 
 router = APIRouter(tags=["通用"])
 
@@ -51,7 +51,8 @@ def _search_filter(model, columns, keyword):
 
 @router.post("/register")
 def register_device(payload: dict, db: Session = Depends(get_db)):
-    """末端设备自动注册接口：按 SN 幂等，存在则更新上报字段，否则创建新记录"""
+    """末端设备自动注册接口：按 SN 合并进边缘盒子管理表。
+    已登记则只刷新 ZT ID / IP地址 / 最后上报时间，其余字段保留；未登记则新建（空闲中）。"""
     sn = (payload.get("sn") or "").strip() if isinstance(payload, dict) else ""
     if not sn:
         raise HTTPException(status_code=422, detail="sn 不能为空")
@@ -60,7 +61,7 @@ def register_device(payload: dict, db: Session = Depends(get_db)):
     zt_addr = (payload.get("zt_addr") or "").strip() or None
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    obj = db.query(EdgeBoxInfo).filter(EdgeBoxInfo.sn == sn).first()
+    obj = db.query(EdgeBox).filter(EdgeBox.sn == sn).first()
     if obj:
         obj.zt_id = zt_id
         obj.zt_addr = zt_addr
@@ -69,7 +70,7 @@ def register_device(payload: dict, db: Session = Depends(get_db)):
         db.refresh(obj)
         return {"ok": True, "action": "updated", "id": obj.id, "sn": sn}
 
-    obj = EdgeBoxInfo(
+    obj = EdgeBox(
         sn=sn,
         zt_id=zt_id,
         zt_addr=zt_addr,
@@ -268,10 +269,10 @@ async def import_items(
                     record[col] = str(v) if not isinstance(v, str) else v
         rows.append(record)
 
-    # 边缘盒子信息：与 /api/register 的按 SN 幂等语义一致 —— 文件内重复的 SN 去重，
+    # 边缘盒子管理：与 /api/register 的按 SN 合并语义一致 —— 文件内重复的 SN 去重，
     # 追加导入（replace=false）时跳过库中已存在的 SN；清空导入（replace=true）不受库内影响
-    if resource == "edge_box_infos":
-        existing = set() if replace else {s for s, in db.query(EdgeBoxInfo.sn).all()}
+    if resource == "edge_boxes":
+        existing = set() if replace else {s for s, in db.query(EdgeBox.sn).all()}
         seen, uniq = set(), []
         for r in rows:
             sn = (r.get("sn") or "").strip()
