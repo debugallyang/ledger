@@ -11,7 +11,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import RESOURCES, Batch, Device, EdgeBox
+from .models import RESOURCES, Batch, Device, EdgeBox, IotCard
 
 router = APIRouter(tags=["通用"])
 
@@ -49,45 +49,31 @@ def _search_filter(model, columns, keyword):
     return or_(*[c.like(like) for c in cols])
 
 
+def _sync_device_cards(obj, old_iccids, db: Session):
+    """把设备当前 ICCID 同步到物联网卡台账：新卡绑定本设备SN，被替换的旧卡解绑"""
+    new_set = {c for c in (obj.iccid1, obj.iccid2) if c}
+    old_set = {c for c in old_iccids if c}
+    for c in old_set - new_set:
+        card = db.query(IotCard).filter(IotCard.iccid == c).first()
+        if card:
+            card.device_sn = None
+    for c in new_set:
+        card = db.query(IotCard).filter(IotCard.iccid == c).first()
+        if card:
+            card.device_sn = obj.device_sn
+
+
 @router.post("/register")
 def register_device(payload: dict, db: Session = Depends(get_db)):
-    """末端设备自动注册接口。
-
-    请求体可带 "type" 指定目标台账：
-      - "device"    → 设备台账（按 device_sn 合并，可命中多行全部刷新）
-      - 缺省/"edge_box" → 边缘盒子管理（按 sn 合并）
-    已登记则只刷新 ZT ID / IP地址 / 最后上报时间，其余登记字段保留；未登记则新建（空闲中）。"""
-    if not isinstance(payload, dict):
-        payload = {}
-    target = (payload.get("type") or "edge_box").strip()
-    sn = (payload.get("sn") or "").strip()
+    """边缘盒子自动注册接口：按 SN 合并进边缘盒子管理表。
+    已登记则只刷新 ZT ID / IP地址 / 最后上报时间，其余字段保留；未登记则新建（空闲中）。"""
+    sn = (payload.get("sn") or "").strip() if isinstance(payload, dict) else ""
     if not sn:
         raise HTTPException(status_code=422, detail="sn 不能为空")
 
     zt_id = (payload.get("zt_id") or "").strip() or None
     zt_addr = (payload.get("zt_addr") or "").strip() or None
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    if target == "device":
-        rows = db.query(Device).filter(Device.device_sn == sn).all()
-        if rows:
-            for obj in rows:
-                obj.zt_id = zt_id
-                obj.zt_addr = zt_addr
-                obj.last_seen = now
-            db.commit()
-            return {"ok": True, "action": "updated", "target": "devices", "sn": sn, "updated": len(rows)}
-        obj = Device(
-            device_sn=sn,
-            zt_id=zt_id,
-            zt_addr=zt_addr,
-            last_seen=now,
-            device_status="空闲中",
-        )
-        db.add(obj)
-        db.commit()
-        db.refresh(obj)
-        return {"ok": True, "action": "created", "target": "devices", "id": obj.id, "sn": sn}
 
     obj = db.query(EdgeBox).filter(EdgeBox.sn == sn).first()
     if obj:
@@ -109,6 +95,59 @@ def register_device(payload: dict, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(obj)
     return {"ok": True, "action": "created", "target": "edge_boxes", "id": obj.id, "sn": sn}
+
+
+@router.post("/register/cpe")
+def register_cpe(payload: dict, db: Session = Depends(get_db)):
+    """CPE 设备自动注册接口：按设备SN合并进设备台账。
+
+    上报字段 zt_id/zt_addr/ssid/lte1/lte2/last_seen 非空则刷新，空值保留原值；
+    入库时间/PN/客户/门店/状态等手动字段一律保留；未登记则新建（空闲中）。"""
+    if not isinstance(payload, dict):
+        payload = {}
+    sn = (payload.get("sn") or "").strip()
+    if not sn:
+        raise HTTPException(status_code=422, detail="sn 不能为空")
+
+    zt_id = (payload.get("zt_id") or "").strip() or None
+    zt_addr = (payload.get("zt_addr") or "").strip() or None
+    ssid = (payload.get("ssid") or "").strip() or None
+    lte1 = (payload.get("lte1") or "").strip() or None
+    lte2 = (payload.get("lte2") or "").strip() or None
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    rows = db.query(Device).filter(Device.device_sn == sn).all()
+    if rows:
+        for obj in rows:
+            old_iccids = (obj.iccid1, obj.iccid2)
+            obj.zt_id = zt_id
+            obj.zt_addr = zt_addr
+            obj.last_seen = now
+            if ssid:
+                obj.ssid = ssid
+            if lte1:
+                obj.iccid1 = lte1
+            if lte2:
+                obj.iccid2 = lte2
+            _sync_device_cards(obj, old_iccids, db)
+        db.commit()
+        return {"ok": True, "action": "updated", "target": "devices", "sn": sn, "updated": len(rows)}
+
+    obj = Device(
+        device_sn=sn,
+        zt_id=zt_id,
+        zt_addr=zt_addr,
+        ssid=ssid,
+        iccid1=lte1,
+        iccid2=lte2,
+        last_seen=now,
+        device_status="空闲中",
+    )
+    db.add(obj)
+    _sync_device_cards(obj, (), db)
+    db.commit()
+    db.refresh(obj)
+    return {"ok": True, "action": "created", "target": "devices", "id": obj.id, "sn": sn}
 
 
 @router.get("/meta/columns")
